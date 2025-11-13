@@ -139,15 +139,15 @@ class WorkflowTIF(Base):
             })
                     
 
-    def to_excel(self,output_path):
+    def to_excel(self,filename, output_path):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        excel_path = os.path.join(output_path,f'output_{timestamp}.xlsx')
+        excel_path = os.path.join(output_path,f'{filename}_{timestamp}.xlsx')
         df = pd.DataFrame(self.results)
         df.to_excel(excel_path, index=False, header=['level','distance_km','closest_lon','closest_lat'])
 
-    def to_png(self,output_path):
+    def to_png(self,filename, output_path):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        img_path = os.path.join(output_path,f'output_{timestamp}.png')
+        img_path = os.path.join(output_path,f'{filename}_{timestamp}.png')
         _, ax = plt.subplots(figsize=(8, 8))
         ax.plot(self.aim[0], self.aim[1], 'ro', label='Target')
         
@@ -160,9 +160,9 @@ class WorkflowTIF(Base):
         ax.set_ylabel('Latitude')
         plt.savefig(img_path)
 
-    def export(self, output_dir_path , type="excel"):
+    def export(self, filename, output_dir_path , type="excel"):
         self.src.close()
         if type == "excel":
-            self.to_excel(output_dir_path)
+            self.to_excel(filename, output_dir_path)
         else:
-            self.to_png(output_dir_path)
+            self.to_png(filename, output_dir_path)
