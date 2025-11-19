@@ -4,9 +4,8 @@ import rasterio
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from math import radians, sin, cos, sqrt, atan2
-import matplotlib.pyplot as plt
-from pyproj import Transformer
+
+from tqdm import tqdm
 
 class Base(ABC):
     def __init__(self, logger):
@@ -35,45 +34,41 @@ class WorkflowTIF(Base):
         super().__init__(logger)
         self.aim = (0, 0)
         self.src = None
-        self.lats = []
-        self.lons = []
-        self.results = []
+        self.results = {
+            "validated_spot":[],
+            "match_spot":[],
+        }
+        self.total = {
+            "total_spot":0,
+            "all_validated_spot":0,
+        }
+        self.stop = False
 
     def initial_data(self):
+        self.logger.info(
+            f"""初始化TIF檔案處理流程
+            """
+        )
         self.aim = (0, 0)
         self.src = None
-        self.lats = [] # 所有經度
-        self.lons = [] # 所有緯度
-        self.results = []
+        self.results = {
+            "validated_spot":[],
+            "match_spot":[],
+        }
+        self.total = {
+            "total_spot":0,
+            "all_validated_spot":0,
+        }
+        self.stop = False
         
-    def tranform(self)-> tuple:
-        transform = self.src.transform 
-        self.logger.info(
-            f"成功取得transform參數用以地理-像素轉換"
-        )
-        self.lats = np.zeros((self.src.height, self.src.width))
-        self.lons = np.zeros((self.src.height, self.src.width))
-        for row in range(self.src.height):
-            for col in range(self.src.width):
-                lon, lat = rasterio.transform.xy(transform, row, col)
-                self.lats[row, col] = lat
-                self.lons[row, col] = lon
-
-        self.logger.info(
-            f"成功產生每個像素的經緯度"
-        )
-    
     def read_file(self, path:str)-> None:
-        self.logger.info(f"read tif file: {path}")
         self.src = rasterio.open(path)
         self.logger.info(
-            f"""
+            f"""讀取TIF檔案資訊:
                 檔案名稱: {self.src.name}, 
                 尺寸(width x height): {self.src.width} x {self.src.height}, 
                 波段數量: {self.src.count}, 
                 CRS: {self.src.crs}, 
-                像素大小(transform): {self.src.transform}, 
-                資料型態(dtype): {self.src.dtypes}, 
                 影像範圍(bounds): {self.src.bounds}
             """
         )
@@ -81,11 +76,7 @@ class WorkflowTIF(Base):
     
     def choose_aim_point(self, lon, lat):
         self.logger.info(
-            f"""
-                目標經度: {lon}, 
-                目標緯度: {lat},
-            """
-        )
+            f"""鎖定目標座標: 經度: {lon}, 緯度: {lat}""")
         self.aim = (lon, lat)
     
     @staticmethod
@@ -103,66 +94,77 @@ class WorkflowTIF(Base):
         return R * c
 
         
-    def estimate(self):
+    def estimate(self, validate_distance_km=0.1, find_match_only=False):
         self.logger.info(
-            f"開始計算"
+            f"""開始計算"""
         )
-        crs_src = self.src.crs
-        crs_dst = 'EPSG:4326'  # WGS84經緯度座標系統
-        transformer = Transformer.from_crs(crs_src, crs_dst, always_xy=True)
+        self.stop = find_match_only
         for level in range(1, self.src.count+1):
-            band_data = self.src.read(level)
-            nonzero_indices = np.nonzero(band_data)
-            # height, width = band_data.shape
-            # rows, cols = np.meshgrid(np.arange(height), np.arange(width), indexing='ij')
-            rows = nonzero_indices[0]
-            cols = nonzero_indices[1]
-            xs, ys = rasterio.transform.xy(self.src.transform, rows, cols)
-            xs = np.array(xs)
-            ys = np.array(ys)
-    
-            lon, lat = transformer.transform(xs, ys)
+            band_data = self.src.read(level)   
+            stop = False
+            for row in tqdm(range(band_data.shape[0]), desc=f"Processing level {level}"):
+                for col in range(band_data.shape[1]):  
+                    color = band_data[row, col] 
+                    if color <= 0: # 跳過無效值
+                        continue
+                    self.total['total_spot'] += 1
+                    lon, lat = rasterio.transform.xy(self.src.transform, row, col) # 取得像素中心點的座標
+                    lon_min, lat_max = rasterio.transform.xy(self.src.transform, row, col, offset='ul') # 取得像素左上角座標
+                    pixel_width = abs(self.src.transform.a)
+                    pixel_height = abs(self.src.transform.e)
+                    # 取得像素左上角座標
+                    lon_max = lon_min + pixel_width 
+                    lat_min = lat_max - pixel_height
+                    dist = self.haversine(lon, lat, self.aim[0], self.aim[1])
+                    if (lon_min <= self.aim[0] <= lon_max) and (lat_min <=  self.aim[1]  <= lat_max):
+                        self.total[f'all_validated_spot'] +=1
+                        self.results['validated_spot'].append((level, dist, lon, lat, lon_max, lon_min, lat_max, lat_min, "Match", color))
+                        self.results['match_spot'].append((level, dist, lon, lat, lon_max, lon_min, lat_max, lat_min, "Match", color))
+                        if self.stop:
+                            self.results['validated_spot'] = [] # release memory
+                            stop = True
+                            break      
+                    else:
+                        if dist < validate_distance_km:
+                            self.total[f'all_validated_spot'] +=1
+                            self.results['validated_spot'].append((level, dist, lon, lat, lon_max, lon_min, lat_max, lat_min, "Close", color))
+                if stop:
+                    break
+        if len(self.results['match_spot']) > 0:
             self.logger.info(
-                f"轉換成經緯度:{lon, lat}"
+                f"""所有層級處理完成
+                完全符合範圍條件點數:{len(self.results['match_spot'])},
+                準確率:100%"""
             )
-            distances = np.vectorize(self.haversine)(lon,lat, self.aim[0], self.aim[1])
-            min_idx = np.argmin(distances)
-            # closest_point = (lon[min_idx], lat[min_idx])
-            closest_distance_km = distances[min_idx]
-
-            self.results.append({
-                'level': level,
-                'distance_km': closest_distance_km,
-                'closest_lon': lon[min_idx],
-                'closest_lat': lat[min_idx]
-               
-            })
+        else:
+            self.logger.info(
+                f"""所有層級處理完成,
+                總共處理有效點數: {self.total['total_spot']}, 
+                符合範圍條件點數: {self.total['all_validated_spot']}
+                準確率: {self.total['all_validated_spot']/self.total['total_spot']*100:.4f}%
+                """)
                     
 
     def to_excel(self,filename, output_path):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         excel_path = os.path.join(output_path,f'{filename}_{timestamp}.xlsx')
-        df = pd.DataFrame(self.results)
-        df.to_excel(excel_path, index=False, header=['level','distance_km','closest_lon','closest_lat'])
+        if self.stop:
+            if not self.results['match_spot']:
+                self.logger.warning("無符合條件的結果，無法匯出Excel檔案")
+                return
+            df = pd.DataFrame(self.results['match_spot'])
+        else:
+            df = pd.DataFrame(self.results['validated_spot'])
+        df.to_excel(excel_path, index=False, header=['level','distance_km','lon','lat', 'lon_max','lon_min','lat_max','lat_min', 'status', 'color'])
 
-    def to_png(self,filename, output_path):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        img_path = os.path.join(output_path,f'{filename}_{timestamp}.png')
-        _, ax = plt.subplots(figsize=(8, 8))
-        ax.plot(self.aim[0], self.aim[1], 'ro', label='Target')
-        
-        for result in self.results:
-            ax.plot(result['closest_lon'], result['closest_lat'], marker='x', label=f'Level {result['level']} closest')
-
-        ax.legend()
-        ax.set_title('Target and closest pixel positions per level')
-        ax.set_xlabel('Longitude')
-        ax.set_ylabel('Latitude')
-        plt.savefig(img_path)
 
     def export(self, filename, output_dir_path , type="excel"):
-        self.src.close()
         if type == "excel":
+            self.logger.info(f"匯出Excel檔案至 {output_dir_path}")
             self.to_excel(filename, output_dir_path)
-        else:
-            self.to_png(filename, output_dir_path)
+       
+            
+    def close(self):
+        if self.src:
+            self.src.close()
+            self.logger.info("已關閉tif檔案資源")

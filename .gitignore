@@ -22,9 +22,11 @@ venv/
 Thumbs.db
 
 # 輸出檔案
+output*
 output.jpg
 output.xlsx
 outputs/
+output/
 static/
 logs/
 

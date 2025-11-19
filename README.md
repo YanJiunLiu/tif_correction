@@ -3,9 +3,9 @@
 此專案為使用 Python 分析 TIF 影像檔案的工具，功能包括：
 1. 打開指定的 TIF 檔案（使用 rasterio）
 2. 分析影像中的不同顏色等級（level）
-3. 根據外部傳入的目標點列表，計算每個 level 的最近距離
-4. 輸出含有 level、顏色與最近距離的 Excel 檔案
-5. 輸出標示最近距離點位的 JPEG 影像檔
+3. 根據外部傳入的目標點列表，計算每個 level 中所有在驗證範圍內的點位
+4. 輸出含有 level、顏色與距離的 Excel 檔案
+
 
 ## 環境需求
 
@@ -20,20 +20,55 @@
 
 ## 使用說明
 
-1. 準備好輸入的 TIF 檔案，例如 `input.tif`。
-2. 修改程式碼中 `target_points_img_coords` 變數，填入你的目標地點座標（影像內座標系）。
-3. 執行主程式，將會在同目錄產生：
-   - `output.xlsx`：記錄每個 level 的顏色與最近距離
-   - `output.jpg`：標示距離目標點最近的像素點位影像
-   
-## 程式碼範例
+1. 下載專案 `git clone https://github.com/YanJiunLiu/tif_correction.git` 
+2. 設定好環境 範例 (使用uv管理): 
+   ```
+      1. Windows 環境
+         a) 到uv官網下載
+         b) uv venv 313_window --python 3.13
+         c) 啟動環境
+         d) uv pip install -r requirement.txt
+      2. linux (Ubuntu / MacOS)環境
+         a)  wget -qO- https://astral.sh/uv/install.sh | sh
+         b) source $HOME/.local/bin/env
+         c) 啟動環境
+         d) uv pip install -r requirement.txt
+   ```
+3. 到tiff correction 目錄下
+4. 設定.env
+   ```
+      # Linux下的路徑範例
+      # TIF_DIRPATH="/mnt/c/Users/user/workspace/itri/tif_correction/tif"
 
-詳細程式碼請參考主程式檔案。
+      # Windows下的路徑範例
+      TIF_DIRPATH= "C:\\Users\\user\\workspace\\itri\\tif_correction\\tif"
 
----
+      # Linux下的路徑範例
+      # OUTPUT_DIR="/mnt/c/Users/user/workspace/itri/tif_correction/output"
 
-若目標地點使用地理座標 (經緯度)，請利用 `rasterio` 的 `transform` 進行座標轉換後再計算距離。
+      # Windows下的路徑範例
+      OUTPUT_DIR= "C:\\Users\\user\\workspace\\itri\\tif_correction\\output"
 
-## 聯絡
+      # Linux下的路徑範例
+      # LOG_DIR="/mnt/c/Users/user/workspace/itri/tif_correction/logs"
 
-有任何問題歡迎提出討論。
+      # Windows下的路徑範例
+      LOG_DIR= "C:\\Users\\user\\workspace\\itri\\tif_correction\\logs"
+
+      # 驗證距離閾值，單位：公里
+      VALIDATE_DIST_KM = 0.1
+
+      # 是否僅查找匹配點
+      FIND_MATCH_ONLY = False
+
+      # 目標位點 (經度)
+      TARGET_SPOT_LON=121.858688
+      
+      # 目標位點 (緯度)
+      TARGET_SPOT_LAT=24.920176
+
+   ```  
+5. 執行 python main.py
+
+
+

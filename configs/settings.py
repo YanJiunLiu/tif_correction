@@ -39,3 +39,9 @@ WORKFLOWS = {
 
 OUTPUT_DIR = os.getenv('OUTPUT_DIR')  if os.getenv('OUTPUT_DIR')  else  os.path.join(ROOT_PATH, 'outputs')
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+VALIDATE_DIST_KM = os.getenv('VALIDATE_DIST_KM')  if os.getenv('VALIDATE_DIST_KM')  else 0.1
+FIND_MATCH_ONLY = os.getenv('FIND_MATCH_ONLY')  if os.getenv('FIND_MATCH_ONLY')  else False
+
+TARGET_SPOT_LON = os.getenv('TARGET_SPOT_LON')  if os.getenv('TARGET_SPOT_LON')  else 121.858688
+TARGET_SPOT_LAT = os.getenv('TARGET_SPOT_LAT')  if os.getenv('TARGET_SPOT_LAT')  else 24.920176
