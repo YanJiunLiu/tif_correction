@@ -4,8 +4,8 @@ import rasterio
 import numpy as np
 import pandas as pd
 from datetime import datetime
-
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 class Base(ABC):
     def __init__(self, logger):
@@ -46,8 +46,7 @@ class WorkflowTIF(Base):
 
     def initial_data(self):
         self.logger.info(
-            f"""初始化TIF檔案處理流程
-            """
+            f"""初始化TIF檔案處理流程"""
         )
         self.aim = (0, 0)
         self.src = None
@@ -104,9 +103,17 @@ class WorkflowTIF(Base):
             stop = False
             for row in tqdm(range(band_data.shape[0]), desc=f"Processing level {level}"):
                 for col in range(band_data.shape[1]):  
-                    color = band_data[row, col] 
-                    if color <= 0: # 跳過無效值
-                        continue
+                    color = band_data[row, col]
+                    # 過濾無效值
+                    if self.src.nodata == 0 or self.src.nodata is not None:
+                        if color == self.src.nodata: # 跳過無效值
+                            continue
+                    # elif band_data.max() == 255: 
+                    #     if color == band_data.max() : # 跳過無效值
+                    #         continue
+                    # else:
+                    #     if color == band_data.min(): # 跳過無效值
+                    #         continue
                     self.total['total_spot'] += 1
                     lon, lat = rasterio.transform.xy(self.src.transform, row, col) # 取得像素中心點的座標
                     lon_min, lat_max = rasterio.transform.xy(self.src.transform, row, col, offset='ul') # 取得像素左上角座標
@@ -134,15 +141,18 @@ class WorkflowTIF(Base):
             self.logger.info(
                 f"""所有層級處理完成
                 完全符合範圍條件點數:{len(self.results['match_spot'])},
-                準確率:100%"""
+                準確率:100%
+                """
             )
         else:
-            self.logger.info(
-                f"""所有層級處理完成,
-                總共處理有效點數: {self.total['total_spot']}, 
-                符合範圍條件點數: {self.total['all_validated_spot']}
-                準確率: {self.total['all_validated_spot']/self.total['total_spot']*100:.4f}%
-                """)
+            if self.total['total_spot'] != 0:
+                self.logger.info(
+                    f"""所有層級處理完成,
+                    總共處理有效點數: {self.total['total_spot']}, 
+                    符合範圍條件點數: {self.total['all_validated_spot']}
+                    準確率: {self.total['all_validated_spot']/self.total['total_spot']*100:.4f}%
+                    """
+                )
                     
 
     def to_excel(self,filename, output_path):
@@ -154,6 +164,9 @@ class WorkflowTIF(Base):
                 return
             df = pd.DataFrame(self.results['match_spot'])
         else:
+            if not self.results['validated_spot']:
+                self.logger.warning("無符合條件的結果，無法匯出Excel檔案")
+                return
             df = pd.DataFrame(self.results['validated_spot'])
         df.to_excel(excel_path, index=False, header=['level','distance_km','lon','lat', 'lon_max','lon_min','lat_max','lat_min', 'status', 'color'])
 
