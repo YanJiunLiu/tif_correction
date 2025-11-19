@@ -38,10 +38,6 @@ class WorkflowTIF(Base):
             "validated_spot":[],
             "match_spot":[],
         }
-        self.total = {
-            "total_spot":0,
-            "all_validated_spot":0,
-        }
         self.stop = False
 
     def initial_data(self):
@@ -53,10 +49,6 @@ class WorkflowTIF(Base):
         self.results = {
             "validated_spot":[],
             "match_spot":[],
-        }
-        self.total = {
-            "total_spot":0,
-            "all_validated_spot":0,
         }
         self.stop = False
         
@@ -108,13 +100,9 @@ class WorkflowTIF(Base):
                     if self.src.nodata == 0 or self.src.nodata is not None:
                         if color == self.src.nodata: # 跳過無效值
                             continue
-                    # elif band_data.max() == 255: 
-                    #     if color == band_data.max() : # 跳過無效值
-                    #         continue
-                    # else:
-                    #     if color == band_data.min(): # 跳過無效值
-                    #         continue
-                    self.total['total_spot'] += 1
+                    else:
+                        if color < 100: # 跳過無效值
+                            continue
                     lon, lat = rasterio.transform.xy(self.src.transform, row, col) # 取得像素中心點的座標
                     lon_min, lat_max = rasterio.transform.xy(self.src.transform, row, col, offset='ul') # 取得像素左上角座標
                     pixel_width = abs(self.src.transform.a)
@@ -124,7 +112,6 @@ class WorkflowTIF(Base):
                     lat_min = lat_max - pixel_height
                     dist = self.haversine(lon, lat, self.aim[0], self.aim[1])
                     if (lon_min <= self.aim[0] <= lon_max) and (lat_min <=  self.aim[1]  <= lat_max):
-                        self.total[f'all_validated_spot'] +=1
                         self.results['validated_spot'].append((level, dist, lon, lat, lon_max, lon_min, lat_max, lat_min, "Match", color))
                         self.results['match_spot'].append((level, dist, lon, lat, lon_max, lon_min, lat_max, lat_min, "Match", color))
                         if self.stop:
@@ -133,26 +120,14 @@ class WorkflowTIF(Base):
                             break      
                     else:
                         if dist < validate_distance_km:
-                            self.total[f'all_validated_spot'] +=1
                             self.results['validated_spot'].append((level, dist, lon, lat, lon_max, lon_min, lat_max, lat_min, "Close", color))
                 if stop:
                     break
-        if len(self.results['match_spot']) > 0:
-            self.logger.info(
-                f"""所有層級處理完成
-                完全符合範圍條件點數:{len(self.results['match_spot'])},
-                準確率:100%
-                """
-            )
-        else:
-            if self.total['total_spot'] != 0:
-                self.logger.info(
-                    f"""所有層級處理完成,
-                    總共處理有效點數: {self.total['total_spot']}, 
-                    符合範圍條件點數: {self.total['all_validated_spot']}
-                    準確率: {self.total['all_validated_spot']/self.total['total_spot']*100:.4f}%
-                    """
-                )
+        self.logger.info(
+            f"""所有層級處理完成
+            符合範圍條件點數:{len(self.results['validated_spot'])},
+            """
+        )
                     
 
     def to_excel(self,filename, output_path):
